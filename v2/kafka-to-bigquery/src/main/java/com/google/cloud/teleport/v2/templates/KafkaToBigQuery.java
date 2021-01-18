@@ -23,10 +23,10 @@ import com.google.cloud.teleport.v2.transforms.ErrorConverters.WriteKafkaMessage
 import com.google.cloud.teleport.v2.transforms.JavascriptTextTransformer.FailsafeJavascriptUdf;
 import com.google.cloud.teleport.v2.utils.SchemaUtils;
 import com.google.cloud.teleport.v2.values.FailsafeElement;
-import com.google.common.collect.ImmutableMap;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import org.apache.beam.sdk.Pipeline;
 import org.apache.beam.sdk.PipelineResult;
@@ -190,6 +190,11 @@ public class KafkaToBigQuery {
 
     void setInputTopics(String inputTopics);
 
+    @Description("Kafka consumer properties")
+    String getConsumerConfigs();
+
+    void setConsumerConfigs(String consumerConfigs);
+
     @Description(
         "The dead-letter table to output to within BigQuery in <project-id>:<dataset>.<table> "
             + "format. If it doesn't exist, it will be created during pipeline execution.")
@@ -258,6 +263,18 @@ public class KafkaToBigQuery {
      *  4) Write failed records out to BigQuery
      */
 
+    HashMap<String, Object> consumerConfigsMap = new HashMap<>();
+    consumerConfigsMap.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+
+    String consumerConfigsStr = options.getConsumerConfigs();
+    if (consumerConfigsStr != null) {
+      for (String arg : consumerConfigsStr.split(",")) {
+        String[] tokens = arg.split("=", 2);
+        String key = tokens[0].trim(), value = tokens[1].trim();
+        consumerConfigsMap.put(key, value);
+      }
+    }
+
     PCollectionTuple convertedTableRows =
         pipeline
             /*
@@ -266,8 +283,7 @@ public class KafkaToBigQuery {
             .apply(
                 "ReadFromKafka",
                 KafkaIO.<String, String>read()
-                    .withConsumerConfigUpdates(
-                        ImmutableMap.of(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest"))
+                    .withConsumerConfigUpdates(consumerConfigsMap)
                     .withBootstrapServers(options.getBootstrapServers())
                     .withTopics(topicsList)
                     .withKeyDeserializerAndCoder(
